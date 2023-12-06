@@ -63,6 +63,44 @@ int main(int argc, char *argv[]) {
     }
 
     // TODO: Read from file, and initiate reliable data transfer to the server
+    // send input.txt or whatever argument we specify to server
+    // max packet size = 1200 bytes (header + payload)
+    // client sends to port 5002
+    // server sends to port 5001
+
+    // step 1, read file in chunks and send data to 
+
+    while (!feof(fp)) { // Read until end of file
+        struct packet pkt;
+
+        // Initialize packet
+        pkt.seqnum = seq_num;
+        pkt.acknum = 0;
+        pkt.ack = 0;
+        pkt.last = 0;
+
+        // Read chunk from file into payload
+        pkt.length = fread(pkt.payload, sizeof(char), PAYLOAD_SIZE, fp);
+
+        // Check if it's the last packet
+        if (pkt.length < PAYLOAD_SIZE) {
+            pkt.last = 1; 
+        }
+
+        printSend(&pkt, 0); 
+
+        // Send packet to the server
+        int bytes_sent = sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
+        if (bytes_sent < 0) {
+            perror("Packet send failed");
+            fclose(fp);
+            close(listen_sockfd);
+            close(send_sockfd);
+            return 1;
+        }
+
+        seq_num += pkt.length; // Increment sequence number for the next packet
+    }
 
     fclose(fp);
     close(listen_sockfd);

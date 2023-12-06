@@ -52,6 +52,31 @@ int main() {
     }
 
     // TODO: Receive file from the client and save it as output.txt
+    // write into output.txt
+
+    while (true) {
+        // Receive packet from client
+        recv_len = recvfrom(listen_sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr_from, &addr_size);
+        if (recv_len < 0) {
+            perror("Receive failed");
+            break;
+        }
+
+        // Packet seq and payload
+        unsigned short seq_num = buffer.seqnum;
+        unsigned int payload_length = buffer.length;
+
+        printRecv(&buffer);
+
+        // Write payload into output.txt
+        fwrite(buffer.payload, sizeof(char), payload_length, fp);
+
+        // Check if last packet
+        if (buffer.last) {
+            printf("File received successfully.\n");
+            break;
+        }
+    }
 
     fclose(fp);
     close(listen_sockfd);
