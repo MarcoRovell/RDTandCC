@@ -68,13 +68,36 @@ int main() {
 
         printRecv(&buffer);
 
-        // Write payload into output.txt
-        fwrite(buffer.payload, sizeof(char), payload_length, fp);
+        // Check if the sequence number matches the expected value
+        if (seq_num == expected_seq_num) {
+            // Write payload into output.txt
+            fwrite(buffer.payload, sizeof(char), payload_length, fp);
 
-        // Check if last packet
-        if (buffer.last) {
-            printf("File received successfully.\n");
-            break;
+            // Update the expected sequence number (cumulative payload size so far)
+            expected_seq_num += payload_length;
+
+            // Prepare ACK packet
+            ack_pkt.seqnum = expected_seq_num; // ACK with the updated sequence number
+            ack_pkt.last = buffer.last; // Indicate if it's the last packet
+            ack_pkt.length = 0; // No payload in ACK
+
+            // Send ACK
+            sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&client_addr_from, addr_size);
+
+            // Check if last packet
+            if (buffer.last) {
+                printf("File received successfully.\n");
+                break;
+            }
+        }
+        else {
+            printf("Unexpected Seq Number with incorrect number: %d\n", seq_num);
+            ack_pkt.seqnum = expected_seq_num - payload_length; // Duplicate ACK with the last correct sequence number
+            ack_pkt.last = 0;
+            ack_pkt.length = 0; // No payload in ACK
+
+            // Send Duplicate ACK
+            sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&client_addr_from, addr_size);
         }
     }
 
