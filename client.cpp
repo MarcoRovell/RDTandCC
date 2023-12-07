@@ -13,13 +13,7 @@ int main(int argc, char *argv[]) {
     sockaddr_in client_addr, server_addr_to, server_addr_from;
     socklen_t addr_size = sizeof(server_addr_to);
     timeval time_v;
-    packet pkt;
     packet ack_pkt;
-    char buffer[PAYLOAD_SIZE];
-    unsigned short seq_num = 0;
-    unsigned short ack_num = 0;
-    char last = 0;
-    char ack = 0;
 
     if (argc != 2) {
         printf("Usage: ./client <filename>\n");
@@ -81,43 +75,46 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    int seq_num = 0;
     while (!feof(fp)) {
-        int ack_received = 0;
-        while (!ack_received) {
-            // Initialize packet
-            pkt.seqnum = seq_num;
-            pkt.acknum = 0;
-            pkt.ack = 0;
-            pkt.last = 0;
-            pkt.length = fread(pkt.payload, sizeof(char), PAYLOAD_SIZE, fp);
+        packet pkt;
+        pkt.seqnum = seq_num;  // Initialize packet
+        pkt.acknum = 0;
+        pkt.ack = 0;
+        pkt.last = 0;
+        pkt.length = fread(pkt.payload, sizeof(char), PAYLOAD_SIZE, fp);
+        if (pkt.length < PAYLOAD_SIZE) {   // Check if it's the last packet
+            pkt.last = 1;
+        }
+        printSend(&pkt, 0);
 
-            // Check if it's the last packet
-            if (pkt.length < PAYLOAD_SIZE) {
-                pkt.last = 1;
-            }
-
-            printSend(&pkt, 0);
-
-            // Send packet to the server
-            int bytes_sent = sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
-            if (bytes_sent < 0) {
-                perror("Packet send failed");
-                fclose(fp);
-                close(listen_sockfd);
-                close(send_sockfd);
-                return 1;
-            }
-
-            // Wait for ACK
-            int recv_len = recvfrom(listen_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&server_addr_from, &addr_size);
-            if (recv_len > 0 && ack_pkt.seqnum == seq_num) {
-                ack_received = 1;
-            } else if (recv_len < 0 && errno == EWOULDBLOCK) {
-                printf("Timeout occurred. Resending packet.\n");
-            }
+        // Send packet to the server
+        int bytes_sent = sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
+        if (bytes_sent < 0) {
+            perror("Packet send failed"); fclose(fp); close(listen_sockfd); close(send_sockfd); return 1;
         }
 
-        seq_num += pkt.length; // Increment sequence number for the next packet
+        seq_num++;
+
+        int ack_received = 0;
+        while (!ack_received) {
+            int recv_len = recvfrom(listen_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&server_addr_from, &addr_size);
+            if (recv_len < 0) {
+                printf("receiver error.\n");
+            }
+            printf("recv_len: %d\n", recv_len);
+            printf("ack_pkt.seqnum: %d\n", ack_pkt.seqnum);
+            if (recv_len > 0 && ack_pkt.seqnum == pkt.seqnum) {
+                ack_received = 1;
+                printf("ACK received!\n\n");
+            } else if (recv_len < 0 && errno == EWOULDBLOCK) { // 
+                printf("Timeout occurred. Resending packet.\n\n");
+                sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
+            }
+            else if (recv_len > 0 && ack_pkt.seqnum != pkt.seqnum) {
+                sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
+            }
+        }
     }
 
     fclose(fp);
