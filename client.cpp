@@ -79,8 +79,11 @@ int main(int argc, char *argv[]) {
     memset(sent, false, sizeof(sent));
 
     int seq_num = 0;
+    packet last_sent_pkt;
+    packet pkt;
+
     while (!feof(fp)) {
-        packet pkt;
+        last_sent_pkt = pkt;
         pkt.seqnum = seq_num;  // Initialize packet
         pkt.acknum = 0;
         pkt.ack = 0;
@@ -89,6 +92,8 @@ int main(int argc, char *argv[]) {
         if (pkt.length < PAYLOAD_SIZE) {   // Check if it's the last packet
             pkt.last = 1;
         }
+
+
         printSend(&pkt, 0);
 
         // Send packet to the server
