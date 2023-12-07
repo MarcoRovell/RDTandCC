@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
     // step 1, read file in chunks and send data to 
 
     // Set socket timeout for ACK reception
-    time_v.tv_sec = 0; 
+    time_v.tv_sec = 1; 
     time_v.tv_usec = 250000; // 0.25 seconds
     if (setsockopt(listen_sockfd, SOL_SOCKET, SO_RCVTIMEO, &time_v, sizeof(time_v)) < 0) {
         perror("Error setting socket timeout");
@@ -103,15 +103,13 @@ int main(int argc, char *argv[]) {
                 printf("receiver error.\n");
             }
             printf("recv_len: %d\n", recv_len);
-            printf("ack_pkt.seqnum: %d\n", ack_pkt.seqnum);
-            if (recv_len > 0 && ack_pkt.seqnum == pkt.seqnum) {
+            printf("ack_pkt.acknum: %d\n", ack_pkt.acknum);
+            printf("pkt.seqnum: %d\n", pkt.seqnum);
+            if (recv_len > 0 && ack_pkt.acknum == pkt.seqnum) {
                 ack_received = 1;
                 printf("ACK received!\n\n");
             } else if (recv_len < 0 && errno == EWOULDBLOCK) { // 
                 printf("Timeout occurred. Resending packet.\n\n");
-                sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
-            }
-            else if (recv_len > 0 && ack_pkt.seqnum != pkt.seqnum) {
                 sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
             }
         }

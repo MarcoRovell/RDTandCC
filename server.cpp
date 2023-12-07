@@ -51,7 +51,7 @@ int main() {
     // TODO: Receive file from the client and save it as output.txt
     // write into output.txt
 
-    int expected_seq_num = 1;
+    int expected_seq_num = 0;
     int recv_len;
     packet ack_pkt;
 
@@ -92,7 +92,7 @@ int main() {
             printf("wrote into output\n");
 
             // Prepare ACK packet
-            ack_pkt.seqnum = seq_num; // ACK with the updated sequence number
+            ack_pkt.acknum = seq_num++; // ACK with the updated sequence number
             ack_pkt.ack = 1;
             ack_pkt.last = buffer.last; // Indicate if it's the last packet
             ack_pkt.length = 0; // No payload in ACK
