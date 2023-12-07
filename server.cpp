@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
-#define MAX_SEQ_NUM 1000
 #include "utils.h"
 
 int main() {
@@ -71,11 +70,7 @@ int main() {
         // Packet seq and payload
         unsigned short seq_num = buffer.seqnum;
         printf("seq_num received on server: %d\n", seq_num);
-        printf("expected_seq_num: %d\n", expected_seq_num);
-        if (seq_num < MAX_SEQ_NUM) {
-            // Mark the sequence number as received
-            received[seq_num] = true;
-        }       
+        printf("expected_seq_num: %d\n", expected_seq_num);  
         unsigned int payload_length = buffer.length;
 
         printRecv(&buffer);
@@ -89,10 +84,13 @@ int main() {
 
             // Write payload into output.txt
             fwrite(buffer.payload, sizeof(char), payload_length, fp);
-            printf("wrote into output\n");
-
+            printf("wrote into output\n\n");
+            if (seq_num < MAX_SEQ_NUM) {
+                // Mark the sequence number as received
+                received[seq_num] = true;
+            }     
             // Prepare ACK packet
-            ack_pkt.acknum = seq_num++; // ACK with the updated sequence number
+            ack_pkt.acknum = seq_num; // ACK with the updated sequence number
             ack_pkt.ack = 1;
             ack_pkt.last = buffer.last; // Indicate if it's the last packet
             ack_pkt.length = 0; // No payload in ACK
@@ -110,16 +108,16 @@ int main() {
         }
         else {
             printf("Unexpected Seq Number with incorrect number: %d\n", seq_num);
-            int last_received = 0;
-            for (int i = 0; i < MAX_SEQ_NUM; ++i) {
-                if (received[i]) {
-                    last_received = i;
-                }
-            }
-            ack_pkt.seqnum = last_received;
+            // int last_received = 0;
+            // for (int i = 0; i < MAX_SEQ_NUM; ++i) {
+            //     if (received[i]) {
+            //         last_received = i;
+            //     }
+            // }
+            ack_pkt.acknum = expected_seq_num--;
             ack_pkt.last = 0;
             ack_pkt.length = 0; // No payload in ACK
-            printf("last received: %d\n", last_received);
+            printf("last received: %d\n\n", expected_seq_num);
             // Send Duplicate ACK
             sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&client_addr_from, addr_size);
         }

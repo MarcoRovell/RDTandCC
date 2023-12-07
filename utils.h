@@ -15,6 +15,7 @@
 #define WINDOW_SIZE 5
 #define TIMEOUT 2
 #define MAX_SEQUENCE 1024
+#define MAX_SEQ_NUM 10000
 
 
 

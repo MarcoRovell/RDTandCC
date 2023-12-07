@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
     // step 1, read file in chunks and send data to 
 
     // Set socket timeout for ACK reception
-    time_v.tv_sec = 1; 
+    time_v.tv_sec = 0; 
     time_v.tv_usec = 250000; // 0.25 seconds
     if (setsockopt(listen_sockfd, SOL_SOCKET, SO_RCVTIMEO, &time_v, sizeof(time_v)) < 0) {
         perror("Error setting socket timeout");
@@ -74,6 +74,9 @@ int main(int argc, char *argv[]) {
         close(send_sockfd);
         return 1;
     }
+
+    bool sent[MAX_SEQ_NUM];
+    memset(sent, false, sizeof(sent));
 
     int seq_num = 0;
     while (!feof(fp)) {
@@ -93,6 +96,8 @@ int main(int argc, char *argv[]) {
         if (bytes_sent < 0) {
             perror("Packet send failed"); fclose(fp); close(listen_sockfd); close(send_sockfd); return 1;
         }
+
+        sent[seq_num] = true;
 
         seq_num++;
 
