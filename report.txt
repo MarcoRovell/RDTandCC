@@ -1,2 +1,22 @@
-Please concisely describe your congestion control scheme here.
-No need to be verbose, brief descriptions/bullet points are preferred.
+This is the breakdown of our approach for implementing the project:
+
+1. Send packets from client and receive them on server. Ignore dropped packets for now.
+
+
+2. Implement Stop-and-Wait:
+-- a. Upon receiving packet at server, 
+send ACK back to client with accurate numbers (at first we were sending some incorrect values, 
+and then we were able to send the correct values) 
+
+-- b. Implement receiving at client for ACK, we need a timeout if ACK not received 
+(setting up a timer for ACKs, listening for incoming ACKs,  and retransmitting packets if the timer expires without receiving an ACK.)
+
+-- c. Implementing the sequence number and expected sequence number logic was flawed originally. 
+Choosing the right times to resend packets and under what conditions was difficult. This took a lot of debugging and 
+altering the format of the code.
+
+In the end we built a Stop-and-Wait protocol that isn't pipelined.
+
+3. Work on CC (yet to be done)
+
+
