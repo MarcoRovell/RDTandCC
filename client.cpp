@@ -65,7 +65,6 @@ int main(int argc, char *argv[]) {
 
     // step 1, read file in chunks and send data to 
 
-    // Set socket timeout for ACK reception
     time_v.tv_sec = 0; 
     time_v.tv_usec = 250000; // 0.25 seconds
     if (setsockopt(listen_sockfd, SOL_SOCKET, SO_RCVTIMEO, &time_v, sizeof(time_v)) < 0) {
@@ -79,44 +78,42 @@ int main(int argc, char *argv[]) {
     memset(sent, false, sizeof(sent));
 
     int seq_num = 0;
-    packet last_sent_pkt;
+    // packet last_sent_pkt;
     packet pkt;
 
     while (!feof(fp)) {
-        last_sent_pkt = pkt;
-        pkt.seqnum = seq_num;  // Initialize packet
+        // last_sent_pkt = pkt;
+        pkt.seqnum = seq_num; 
         pkt.acknum = 0;
         pkt.ack = 0;
         pkt.last = 0;
-        pkt.length = fread(pkt.payload, sizeof(char), PAYLOAD_SIZE, fp);
-        if (pkt.length < PAYLOAD_SIZE) {   // Check if it's the last packet
+        pkt.length = fread(pkt.payload, sizeof(char), PAYLOAD_SIZE, fp); // Write into buffer
+        if (pkt.length < PAYLOAD_SIZE) {   // Check if last packet
             pkt.last = 1;
         }
 
 
         printSend(&pkt, 0);
 
-        // Send packet to the server
-        int bytes_sent = sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
+        int bytes_sent = sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to)); // Send packet to the server
         if (bytes_sent < 0) {
             perror("Packet send failed"); fclose(fp); close(listen_sockfd); close(send_sockfd); return 1;
         }
 
         sent[seq_num] = true;
 
-        seq_num++;
-
-        int ack_received = 0;
+        bool ack_received = false;
         while (!ack_received) {
             int recv_len = recvfrom(listen_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&server_addr_from, &addr_size);
-            if (recv_len < 0) {
-                printf("receiver error.\n");
-            }
+            // if (recv_len < 0) {
+            //     printf("receiver error.\n");
+            // }
             printf("recv_len: %d\n", recv_len);
             printf("ack_pkt.acknum: %d\n", ack_pkt.acknum);
             printf("pkt.seqnum: %d\n", pkt.seqnum);
             if (recv_len > 0 && ack_pkt.acknum == pkt.seqnum) {
-                ack_received = 1;
+                ack_received = true;
+                seq_num++;
                 printf("ACK received!\n\n");
             } else if (recv_len < 0 && errno == EWOULDBLOCK) { // 
                 printf("Timeout occurred. Resending packet.\n\n");
