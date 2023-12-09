@@ -74,7 +74,7 @@ int main() {
         printRecv(&buffer);
 
         if (seq_num == expected_seq_num && !received[seq_num]) {  // Check if seq number matches expected value
-            printf("seq_num equals expected_seq_num\n");
+            printf("seq_num equals expected_seq_num\n\n");
 
             fwrite(buffer.payload, sizeof(char), payload_length, fp); // Write into output.
             if (seq_num < MAX_SEQ_NUM) {
@@ -95,18 +95,29 @@ int main() {
                 printf("Entire File received successfully.\n");  // Check if last packet
                 break;
             }
+        } 
+        else if (received[seq_num]) {
+            printf("pkt already received\n");
+            packet dupACK;
+            dupACK.acknum = seq_num; // resend ACK for seq_num already received
+            dupACK.last = buffer.last;
+            dupACK.length = 0;
+            printSend(&dupACK, buffer.last);
+            sendto(send_sockfd, &dupACK, sizeof(dupACK), 0, (struct sockaddr *)&client_addr_to, addr_size);
         }
         else {
-            printf("Unexpected Seq Number: %d\n", seq_num);
-            // int last_received = 0;
-            // for (int i = 0; i < MAX_SEQ_NUM; ++i) {
-            //     if (received[i]) {
-            //         last_received = i;
-            //     }
-            // }
+            printf("Unexpected Seq Number not already received: %d\n", seq_num);
             packet dupACK;
-            dupACK.acknum = expected_seq_num - 1; // previous seq number sent to signify out of order packet
-            dupACK.last = 0;
+            int lastReceivedSeq = -1;
+            for (int i = 0; i < MAX_SEQ_NUM; i++) {
+                if (!received[i]) {
+                    break;
+                }
+                lastReceivedSeq = i;
+            }
+
+            dupACK.acknum = lastReceivedSeq;
+            dupACK.last = buffer.last;
             dupACK.length = 0; 
             printf("last received packet: %d\n\n", expected_seq_num - 1);
             sendto(send_sockfd, &dupACK, sizeof(dupACK), 0, (struct sockaddr *)&client_addr_to, addr_size); // Send dupACK
