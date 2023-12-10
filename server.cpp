@@ -5,6 +5,9 @@
 #include <unistd.h>
 #include "utils.h"
 
+#include <unordered_map>
+
+
 int main() {
     int listen_sockfd, send_sockfd;
     sockaddr_in server_addr, client_addr_from, client_addr_to;
@@ -51,11 +54,14 @@ int main() {
     // write into output.txt
 
     int expected_seq_num = 0;
+    int start_ack_num = 0;
     int recv_len;
     packet ack_pkt;
 
-    bool received[MAX_SEQ_NUM];
-    memset(received, false, sizeof(received));
+    std::unordered_map<unsigned short, bool> received;
+    const char* emptyPayload = "";
+    packet pkt_buffer[WINDOW_SIZE];
+    int last_PKT = false;
 
     while (true) {
         recv_len = recvfrom(listen_sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr_from, &addr_size);
@@ -63,36 +69,41 @@ int main() {
             printf("Receive failed");
             break;
         }
-
+        printf("Start_ack_num: %d\n", start_ack_num);
         printf("recv_len: %d\n", recv_len);
 
-        // Packet seq and payload
+        // Packet seq
         unsigned short seq_num = buffer.seqnum;
         printf("expected_seq_num: %d\n", expected_seq_num);  
-        unsigned int payload_length = buffer.length;
-
         printRecv(&buffer);
-
-        if (seq_num == expected_seq_num && !received[seq_num]) {  // Check if seq number matches expected value
-            printf("seq_num equals expected_seq_num\n\n");
-
-            fwrite(buffer.payload, sizeof(char), payload_length, fp); // Write into output.
-            if (seq_num < MAX_SEQ_NUM) {
-                received[seq_num] = true; // Mark seq number as received
-
-            }     
-
-            ack_pkt.acknum = expected_seq_num; // ACK with expected num
-            ack_pkt.ack = 1; // ACK bit set to 1
-            ack_pkt.last = buffer.last; // Indicate if last packet
-            ack_pkt.length = 0; // No payload
-
+        if (expected_seq_num % WINDOW_SIZE == 0) {
+            start_ack_num = expected_seq_num;
+        }
+        if (seq_num >= start_ack_num && seq_num < start_ack_num + WINDOW_SIZE && !received[seq_num]) {  // Check if seq number exists in window
+            pkt_buffer[seq_num % WINDOW_SIZE] = buffer;
+            build_packet(&ack_pkt, 0, seq_num, pkt_buffer[seq_num % WINDOW_SIZE].last, 1, 0, emptyPayload); 
             sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&client_addr_to, addr_size); // send ACK
+            received[seq_num] = true; // Mark seq number as received
 
-            expected_seq_num++;
+            printf("exists in window\n");
+            if (seq_num == expected_seq_num) {
+                printf("seq_num equals expected_seq_num\n\n");
+                fwrite(pkt_buffer[seq_num % WINDOW_SIZE].payload, sizeof(char), pkt_buffer[seq_num % WINDOW_SIZE].length, fp); // Write into output.
+                expected_seq_num++; 
 
-            if (buffer.last) {
-                printf("Entire File received successfully.\n");  // Check if last packet
+                while (received[expected_seq_num]) {
+                    printf("buffered packets with seq_num: %d writing out into file\n", expected_seq_num);
+                    fwrite(pkt_buffer[expected_seq_num % WINDOW_SIZE].payload, sizeof(char), pkt_buffer[expected_seq_num % WINDOW_SIZE].length, fp);
+                    if (pkt_buffer[expected_seq_num % WINDOW_SIZE].last) {
+                        printf("Entire File received successfully.\n");
+                        last_PKT = true;
+                        break;
+                    }
+                    expected_seq_num++;
+                }
+            } 
+
+            if (last_PKT) {
                 break;
             }
         } 
@@ -108,12 +119,14 @@ int main() {
         else {
             printf("Unexpected Seq Number not already received: %d\n", seq_num);
             packet dupACK;
-            int lastReceivedSeq = -1;
-            for (int i = 0; i < MAX_SEQ_NUM; i++) {
-                if (!received[i]) {
+            int lastReceivedSeq = 0;
+            int k = 0;
+            while (true) {
+                if (!received[k]) {
                     break;
                 }
-                lastReceivedSeq = i;
+                lastReceivedSeq = k;
+                k++;
             }
 
             dupACK.acknum = lastReceivedSeq;

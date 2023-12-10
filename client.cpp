@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
     // step 1, read file in chunks and send data to 
 
     time_v.tv_sec = 0; 
-    time_v.tv_usec = 250000; // 0.25 seconds
+    time_v.tv_usec = 210000; // 0.25 seconds
     if (setsockopt(listen_sockfd, SOL_SOCKET, SO_RCVTIMEO, &time_v, sizeof(time_v)) < 0) {
         perror("Error setting socket timeout");
         close(listen_sockfd);
@@ -74,22 +74,20 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    bool sent[MAX_SEQ_NUM];
-    memset(sent, false, sizeof(sent));
-
     int seq_num = 0;
-    int expected_ack = 0; 
-    packet batch[WINDOW_SIZE];
-
+    bool last_ACK = false;
     while (!feof(fp)) {
-        // last_sent_pkt = pkt;
+        if (last_ACK == true) {
+            break;
+        }
+        packet batch[WINDOW_SIZE];
         for (int i = 0; i < WINDOW_SIZE; i++) {
             packet pkt;
-            pkt.seqnum = seq_num; // Assign the current sequence number
+            pkt.seqnum = seq_num; 
             pkt.acknum = 0;
             pkt.ack = 0;
             pkt.last = 0;
-            pkt.length = fread(pkt.payload, sizeof(char), PAYLOAD_SIZE, fp); // Write into buffer
+            pkt.length = fread(pkt.payload, sizeof(char), PAYLOAD_SIZE, fp); 
             if (pkt.length < PAYLOAD_SIZE) {   // Check if last packet
                 pkt.last = 1;
                 batch[i] = pkt;
@@ -100,7 +98,7 @@ int main(int argc, char *argv[]) {
         }
         
         int j = 0;
-        while(j < 5) {
+        while(j < WINDOW_SIZE) {
             printSend(&batch[j], 0);
             int bytes_sent = sendto(send_sockfd, &batch[j], sizeof(batch[j]), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to)); // Send packet to the server
             if (bytes_sent < 0) {
@@ -112,68 +110,51 @@ int main(int argc, char *argv[]) {
         }
 
         bool ack_received[WINDOW_SIZE] = {false};
-        int start_ack_num = expected_ack;
+        int start_ack_num = batch[0].seqnum;
+        printf("start_ack_num: %d\n", start_ack_num);
         while (true) {
             int recv_len = recvfrom(listen_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr *)&server_addr_from, &addr_size);
             printf("recv_len: %d\n", recv_len);
             if (recv_len > 0) {
                 if (ack_pkt.acknum >= start_ack_num && ack_pkt.acknum < start_ack_num + WINDOW_SIZE) {
-                    // This ACK belongs to the current window
+                    int modified_window_size = WINDOW_SIZE;
+                    if (ack_pkt.last == true) {
+                        last_ACK = true;
+                        modified_window_size = ack_pkt.acknum % WINDOW_SIZE;
+                    }
                     int index = ack_pkt.acknum % WINDOW_SIZE;
                     if (!ack_received[index]) {
                         ack_received[index] = true;
                         printf("ACK received for packet with seqnum: %d\n", ack_pkt.acknum);
-                        expected_ack = ack_pkt.acknum + 1;
                     }
-                }
                     bool all_acks_received = true;
-                    for (int i = 0; i < WINDOW_SIZE; ++i) {
+                    
+                    for (int i = 0; i < modified_window_size; ++i) {
                         if (!ack_received[i]) {
                             all_acks_received = false;
                             break;
                         }
                     }
                     if (all_acks_received) {
-                        break; // Exit the while loop if all ACKs are received
-                    }                 
-                // else {
-                //     printf("Out-of-order ACK received. Retransmitting entire batch.\n\n");
-                //     for (int i = 0; i < WINDOW_SIZE; i++) {
-                //         if (!ack_received[batch[i].seqnum]) {
-                //             sendto(send_sockfd, &batch[i], sizeof(batch[i]), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
-                //             expected_ack = start_ack_num;
-                //             printf("Retransmitted packet with seqnum: %d\n", batch[i].seqnum);
-                //         }
-                //     }
-
-                // }
-            } else if (errno == EWOULDBLOCK) {
-                printf("Timeout occurred. Retransmitting packets.\n\n");
-                for (int i = 0; i < WINDOW_SIZE; i++) {
-                    // if (!ack_received[i]) {
-                        sendto(send_sockfd, &batch[i], sizeof(batch[i]), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
-                        printf("Retransmitted packet with seqnum: %d\n", batch[i].seqnum);
-                    // }
+                        printf("ALL ACKs RECEIVED FOR BATCH\n\n");
+                        time_v.tv_usec = 250000;
+                        break; // Exit loop if all ACKs are received
+                    } 
                 }                
+            } else if (errno == EWOULDBLOCK) {
+                printf("Timeout occurred. Retransmitting packets.\n");
+                time_v.tv_usec = time_v.tv_usec * 2;
+                for (int i = 0; i < WINDOW_SIZE; i++) {
+                    sendto(send_sockfd, &batch[i], sizeof(batch[i]), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
+                    printf("Retransmitted packet with seqnum: %d\n", batch[i].seqnum);
+                }
+                printf("\n");
             }
         }
     }
-
+    printf("Entire File received successfully.");
     fclose(fp);
     close(listen_sockfd);
     close(send_sockfd);
     return 0;
 }
-
-// in process of implementing batch stop-and-wait, having issues on client end with sequence and ACK nums
-// printf("recv_len: %d\n", recv_len);
-// printf("ack_pkt.acknum: %d\n", ack_pkt.acknum);
-// printf("pkt.seqnum: %d\n", pkt.seqnum);
-// if (recv_len > 0 && ack_pkt.acknum == pkt.seqnum) {
-//     ack_received = true;
-//     seq_num++;
-//     printf("ACK received!\n\n");
-// } else if (recv_len < 0 && errno == EWOULDBLOCK) { // 
-//     printf("Timeout occurred. Resending packet.\n\n");
-//     sendto(send_sockfd, &pkt, sizeof(pkt), 0, (struct sockaddr *)&server_addr_to, sizeof(server_addr_to));
-// }
